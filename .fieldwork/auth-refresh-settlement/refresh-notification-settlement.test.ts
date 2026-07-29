@@ -236,7 +236,7 @@ describe('Fieldwork auth refresh notification settlement', () => {
       nestedOutcome = await Promise.race([
         fixture.client
           .refreshSession({ refresh_token: fixture.originalSession.refresh_token })
-          .then(({ error }) => (error ? 'timeout' : 'success') as const),
+          .then(({ error }): 'success' | 'timeout' => (error ? 'timeout' : 'success')),
         new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 100)),
       ])
     })
