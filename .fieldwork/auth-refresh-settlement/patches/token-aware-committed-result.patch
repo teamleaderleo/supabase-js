@@ -1,0 +1,76 @@
+diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/src/GoTrueClient.ts
+--- a/packages/core/auth-js/src/GoTrueClient.ts
++++ b/packages/core/auth-js/src/GoTrueClient.ts
+@@ -298,6 +298,7 @@ export default class GoTrueClient {
+   protected autoRefreshTickTimeout: ReturnType<typeof setTimeout> | null = null
+   protected visibilityChangedCallback: (() => Promise<any>) | null = null
+   protected refreshingDeferred: Deferred<CallRefreshTokenResult> | null = null
++  protected refreshingCommittedResult: CallRefreshTokenResult | null = null
+   /**
+    * Cache of the most recent refresh failure, keyed by the refresh token
+    * that failed. Serial callers passing the *same* token within
+@@ -4961,6 +4962,12 @@ export default class GoTrueClient {
+ 
+     // refreshing is already in progress
+     if (this.refreshingDeferred) {
++      if (
++        this.refreshingCommittedResult?.data?.refresh_token === refreshToken
++      ) {
++        return this.refreshingCommittedResult
++      }
++
+       return this.refreshingDeferred.promise
+     }
+ 
+@@ -5064,15 +5071,20 @@ export default class GoTrueClient {
+         return discarded
+       }
+ 
+-      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session)
+-
+       const result = { data: data.session, error: null }
+ 
+       // Refresh succeeded — clear any cached failure so the next caller
+       // (including the auto-refresh ticker) attempts a real refresh again.
+       this.lastRefreshFailure = null
+ 
++      // Expose the committed result only to calls carrying the newly rotated
++      // token. Callers still carrying the old token retain the existing wait.
++      this.refreshingCommittedResult = result
++
++      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session, true, {
++        throwOnSubscriberError: false,
++      })
++
+       this.refreshingDeferred.resolve(result)
+ 
+       return result
+@@ -5130,6 +5142,7 @@ export default class GoTrueClient {
+       throw error
+     } finally {
+       this.refreshingDeferred = null
++      this.refreshingCommittedResult = null
+       this._debug(debugName, 'end')
+     }
+   }
+@@ -5138,7 +5151,8 @@ export default class GoTrueClient {
+   private async _notifyAllSubscribers(
+     event: AuthChangeEvent,
+     session: Session | null,
+-    broadcast = true
++    broadcast = true,
++    options: { throwOnSubscriberError?: boolean } = {}
+   ) {
+     if (this._pendingInitNotifications !== null && broadcast) {
+       // We're inside initialize() before initializePromise has resolved, and
+@@ -5174,7 +5188,9 @@ export default class GoTrueClient {
+           console.error(errors[i])
+         }
+ 
+-        throw errors[0]
++        if (options.throwOnSubscriberError !== false) {
++          throw errors[0]
++        }
+       }
+     } finally {
+       this._debug(debugName, 'end')
