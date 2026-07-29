@@ -20,7 +20,7 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
      // refreshing is already in progress
      if (this.refreshingDeferred) {
        return this.refreshingDeferred.promise
-@@ -5064,17 +5069,19 @@ export default class GoTrueClient {
+@@ -5064,16 +5069,18 @@ export default class GoTrueClient {
          return discarded
        }
  
@@ -41,7 +41,7 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
        return result
      } catch (error) {
        this._debug(debugName, 'error', error)
-@@ -5118,6 +5125,13 @@ export default class GoTrueClient {
+@@ -5118,6 +5125,11 @@ export default class GoTrueClient {
        return
      }
  
@@ -53,7 +53,7 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
      const debugName = `#_notifyAllSubscribers(${event})`
      this._debug(debugName, 'begin', session, `broadcast = ${broadcast}`)
  
-@@ -5136,10 +5150,13 @@ export default class GoTrueClient {
+@@ -5136,9 +5148,12 @@ export default class GoTrueClient {
            console.error(errors[i])
          }
  
