@@ -8,6 +8,7 @@ test_files=(
   "packages/core/auth-js/test/fieldwork-refresh-notification-settlement.test.ts"
   "packages/core/auth-js/test/fieldwork-init-refresh-subscriber-error.test.ts"
   "packages/core/auth-js/test/fieldwork-settlement-boundaries.test.ts"
+  "packages/core/auth-js/test/fieldwork-initial-session-callback-error.test.ts"
 )
 
 case "$variant" in
@@ -42,6 +43,9 @@ cp \
 cp \
   .fieldwork/auth-refresh-settlement/settlement-boundaries.test.ts \
   "${test_files[2]}"
+cp \
+  .fieldwork/auth-refresh-settlement/initial-session-callback-error.test.ts \
+  "${test_files[3]}"
 
 node - "${test_files[@]}" <<'NODE'
 const fs = require('node:fs')
@@ -62,4 +66,5 @@ pnpm exec jest --config jest.config.cli.js --runInBand \
   test/fieldwork-refresh-notification-settlement.test.ts \
   test/fieldwork-init-refresh-subscriber-error.test.ts \
   test/fieldwork-settlement-boundaries.test.ts \
+  test/fieldwork-initial-session-callback-error.test.ts \
   --coverage=false
