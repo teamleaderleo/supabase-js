@@ -7,6 +7,7 @@ source_file="packages/core/auth-js/src/GoTrueClient.ts"
 test_files=(
   "packages/core/auth-js/test/fieldwork-refresh-notification-settlement.test.ts"
   "packages/core/auth-js/test/fieldwork-init-refresh-subscriber-error.test.ts"
+  "packages/core/auth-js/test/fieldwork-settlement-boundaries.test.ts"
 )
 
 case "$variant" in
@@ -36,6 +37,9 @@ cp \
 cp \
   .fieldwork/auth-refresh-settlement/init-refresh-subscriber-error.test.ts \
   "${test_files[1]}"
+cp \
+  .fieldwork/auth-refresh-settlement/settlement-boundaries.test.ts \
+  "${test_files[2]}"
 
 node - "${test_files[@]}" <<'NODE'
 const fs = require('node:fs')
@@ -55,4 +59,5 @@ cd packages/core/auth-js
 pnpm exec jest --config jest.config.cli.js --runInBand \
   test/fieldwork-refresh-notification-settlement.test.ts \
   test/fieldwork-init-refresh-subscriber-error.test.ts \
+  test/fieldwork-settlement-boundaries.test.ts \
   --coverage=false
