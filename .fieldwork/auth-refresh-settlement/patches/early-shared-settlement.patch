@@ -1,0 +1,47 @@
+diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/src/GoTrueClient.ts
+--- a/packages/core/auth-js/src/GoTrueClient.ts
++++ b/packages/core/auth-js/src/GoTrueClient.ts
+@@ -5064,17 +5064,19 @@ export default class GoTrueClient {
+         return discarded
+       }
+ 
+-      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session)
+-
+       const result = { data: data.session, error: null }
+ 
+       // Refresh succeeded — clear any cached failure so the next caller
+       // (including the auto-refresh ticker) attempts a real refresh again.
+       this.lastRefreshFailure = null
+ 
++      // The rotated session is committed. Settle the shared refresh dependency
++      // before callbacks run so nested refresh calls can observe that result.
+       this.refreshingDeferred.resolve(result)
+ 
++      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session, true, {
++        throwOnSubscriberError: false,
++      })
++
+       return result
+     } catch (error) {
+       this._debug(debugName, 'error', error)
+@@ -5100,7 +5102,8 @@ export default class GoTrueClient {
+   private async _notifyAllSubscribers(
+     event: AuthChangeEvent,
+     session: Session | null,
+-    broadcast = true
++    broadcast = true,
++    options: { throwOnSubscriberError?: boolean } = {}
+   ) {
+     if (this._pendingInitNotifications !== null && broadcast) {
+       // We're inside initialize() before initializePromise has resolved, and
+@@ -5136,7 +5139,9 @@ export default class GoTrueClient {
+           console.error(errors[i])
+         }
+ 
+-        throw errors[0]
++        if (options.throwOnSubscriberError !== false) {
++          throw errors[0]
++        }
+       }
+     } finally {
+       this._debug(debugName, 'end')
