@@ -45,8 +45,22 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify patch formatting
-        run: pnpm exec prettier --check .fieldwork/auth-refresh-settlement
+      - name: Check experiment files
+        run: |
+          bash -n .fieldwork/auth-refresh-settlement/run.sh
+          pnpm exec prettier --check \
+            .fieldwork/auth-refresh-settlement/README.md \
+            .fieldwork/auth-refresh-settlement/refresh-notification-settlement.test.ts \
+            .fieldwork/auth-refresh-settlement/settlement-model.mjs \
+            .fieldwork/auth-refresh-settlement/settlement-model.result.json \
+            .github/workflows/fieldwork-auth-refresh-settlement.yml
+
+      - name: Verify executable model result
+        run: |
+          node .fieldwork/auth-refresh-settlement/settlement-model.mjs > /tmp/settlement-model.result.json
+          diff -u \
+            .fieldwork/auth-refresh-settlement/settlement-model.result.json \
+            /tmp/settlement-model.result.json
 
       - name: Run real auth-js regression matrix
         run: bash .fieldwork/auth-refresh-settlement/run.sh "${{ matrix.variant }}"
