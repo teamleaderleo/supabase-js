@@ -15,11 +15,13 @@ case "$variant" in
     patch_file=".fieldwork/auth-refresh-settlement/patches/early-shared-settlement.patch"
     export FIELDWORK_OLD_TOKEN_JOINER_EARLY=true
     export FIELDWORK_EXPLICIT_OLD_TOKEN_NESTED=success
+    export FIELDWORK_TRANSPORT_JOINER_OUTCOME=success
     ;;
   token-aware-committed-result)
     patch_file=".fieldwork/auth-refresh-settlement/patches/token-aware-committed-result.patch"
     export FIELDWORK_OLD_TOKEN_JOINER_EARLY=false
     export FIELDWORK_EXPLICIT_OLD_TOKEN_NESTED=timeout
+    export FIELDWORK_TRANSPORT_JOINER_OUTCOME=rejection
     ;;
   *)
     echo "usage: $0 <early-shared-settlement|token-aware-committed-result>" >&2
