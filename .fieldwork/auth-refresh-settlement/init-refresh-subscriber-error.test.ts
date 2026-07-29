@@ -13,7 +13,7 @@ const settlesWithin = <T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> =>
     ),
   ])
 
-test('queued TOKEN_REFRESHED subscriber failure does not reject initialization after commit', async () => {
+const createInitFixture = async () => {
   const storage = memoryLocalStorageAdapter()
   const storageKey = `fieldwork-init-refresh-${Date.now()}-${Math.random()}`
   const now = Math.floor(Date.now() / 1000)
@@ -48,29 +48,65 @@ test('queued TOKEN_REFRESHED subscriber failure does not reject initialization a
   }))
   ;(client as any)._refreshAccessToken = refreshAccessToken
 
-  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-  const unhandled: unknown[] = []
-  const onUnhandled = (reason: unknown) => unhandled.push(reason)
-  process.on('unhandledRejection', onUnhandled)
+  return { storage, storageKey, originalSession, rotatedSession, client, refreshAccessToken }
+}
 
-  client.onAuthStateChange(async (event) => {
-    if (event === 'TOKEN_REFRESHED') {
-      throw new Error('queued subscriber failed')
+describe('Fieldwork queued TOKEN_REFRESHED settlement', () => {
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  test('subscriber failure does not reject initialization after commit', async () => {
+    const fixture = await createInitFixture()
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+
+    fixture.client.onAuthStateChange(async (event) => {
+      if (event === 'TOKEN_REFRESHED') {
+        throw new Error('queued subscriber failed')
+      }
+    })
+
+    try {
+      await expect(settlesWithin(fixture.client.initialize())).resolves.toBeDefined()
+      await nextTurn()
+
+      const stored = (await getItemAsync(
+        fixture.storage,
+        fixture.storageKey
+      )) as Session | null
+      expect(stored?.refresh_token).toBe(fixture.rotatedSession.refresh_token)
+      expect(fixture.refreshAccessToken).toHaveBeenCalledTimes(1)
+      expect(consoleError).toHaveBeenCalled()
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+      await fixture.client.dispose()
     }
   })
 
-  try {
-    await expect(settlesWithin(client.initialize())).resolves.toBeDefined()
-    await nextTurn()
+  test('default nested refresh receives queued event session without a second rotation', async () => {
+    const fixture = await createInitFixture()
+    let handled = false
+    let nestedSession: Session | null | undefined
 
-    const stored = (await getItemAsync(storage, storageKey)) as Session | null
-    expect(stored?.refresh_token).toBe(rotatedSession.refresh_token)
-    expect(refreshAccessToken).toHaveBeenCalledTimes(1)
-    expect(consoleError).toHaveBeenCalled()
-    expect(unhandled).toEqual([])
-  } finally {
-    process.off('unhandledRejection', onUnhandled)
-    consoleError.mockRestore()
-    await client.dispose()
-  }
+    fixture.client.onAuthStateChange(async (event) => {
+      if (event !== 'TOKEN_REFRESHED' || handled) return
+      handled = true
+      const { data, error } = await fixture.client.refreshSession()
+      expect(error).toBeNull()
+      nestedSession = data.session
+    })
+
+    await expect(settlesWithin(fixture.client.initialize())).resolves.toBeDefined()
+
+    expect(nestedSession?.refresh_token).toBe(fixture.rotatedSession.refresh_token)
+    expect(fixture.refreshAccessToken).toHaveBeenCalledTimes(1)
+    const stored = (await getItemAsync(fixture.storage, fixture.storageKey)) as Session | null
+    expect(stored?.refresh_token).toBe(fixture.rotatedSession.refresh_token)
+
+    await fixture.client.dispose()
+  })
 })
