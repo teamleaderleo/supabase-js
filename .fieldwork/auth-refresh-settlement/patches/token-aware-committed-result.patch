@@ -22,7 +22,7 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
        return this.refreshingDeferred.promise
      }
  
-@@ -5064,15 +5071,20 @@ export default class GoTrueClient {
+@@ -5064,15 +5071,18 @@ export default class GoTrueClient {
          return discarded
        }
  
@@ -38,14 +38,12 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
 +      // token. Callers still carrying the old token retain the existing wait.
 +      this.refreshingCommittedResult = result
 +
-+      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session, true, {
-+        throwOnSubscriberError: false,
-+      })
++      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session)
 +
        this.refreshingDeferred.resolve(result)
  
        return result
-@@ -5130,6 +5142,7 @@ export default class GoTrueClient {
+@@ -5130,6 +5140,7 @@ export default class GoTrueClient {
        throw error
      } finally {
        this.refreshingDeferred = null
@@ -53,22 +51,12 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
        this._debug(debugName, 'end')
      }
    }
-@@ -5138,7 +5151,8 @@ export default class GoTrueClient {
-   private async _notifyAllSubscribers(
-     event: AuthChangeEvent,
-     session: Session | null,
--    broadcast = true
-+    broadcast = true,
-+    options: { throwOnSubscriberError?: boolean } = {}
-   ) {
-     if (this._pendingInitNotifications !== null && broadcast) {
-       // We're inside initialize() before initializePromise has resolved, and
-@@ -5174,7 +5188,9 @@ export default class GoTrueClient {
+@@ -5174,7 +5185,9 @@ export default class GoTrueClient {
            console.error(errors[i])
          }
  
 -        throw errors[0]
-+        if (options.throwOnSubscriberError !== false) {
++        if (event !== 'TOKEN_REFRESHED') {
 +          throw errors[0]
 +        }
        }
