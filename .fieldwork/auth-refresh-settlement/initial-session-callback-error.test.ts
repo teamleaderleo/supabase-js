@@ -12,6 +12,20 @@ const session: Session = {
   user: { id: 'user-1', email: 'user@example.com' } as any,
 }
 
+const outcomeWithin = async <T>(promise: PromiseLike<T>, timeoutMs = 250) => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      Promise.resolve(promise).then(() => 'finished' as const),
+      new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 describe('Fieldwork INITIAL_SESSION callback error ownership', () => {
   afterEach(() => {
     jest.restoreAllMocks()
@@ -48,12 +62,7 @@ describe('Fieldwork INITIAL_SESSION callback error ownership', () => {
       finish()
     })
 
-    await expect(
-      Promise.race([
-        finished.then(() => 'finished' as const),
-        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 250)),
-      ])
-    ).resolves.toBe('finished')
+    await expect(outcomeWithin(finished)).resolves.toBe('finished')
 
     expect(observed).toEqual([session.refresh_token, null])
     expect(consoleError).toHaveBeenCalledWith(new Error('initial session callback failed'))
