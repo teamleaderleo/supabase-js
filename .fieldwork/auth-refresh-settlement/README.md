@@ -15,10 +15,12 @@ A manual refresh currently follows this order:
 5. resolve the shared refresh `Deferred`;
 6. return the refresh result.
 
-That creates two coupled failures:
+That creates two coupled success-path failures:
 
 - a subscriber that awaits `refreshSession()` can join the unresolved outer refresh and form a promise cycle;
 - a subscriber exception can turn a committed refresh into a caller-visible rejection and can reject the internal `Deferred` without a joiner.
+
+A callback that throws an `AuthError` exposes a stronger consequence. The outer `_callRefreshToken` catch can classify that application callback error as a token-refresh failure. When the old access token has expired, current code can remove the newly stored rotated session and cache the callback error under the old refresh token.
 
 Callbacks must remain awaited. `@supabase/ssr` uses an async auth callback to flush cookie changes before a server response completes. Earlier fire-and-forget notification changes caused OAuth cookie regressions.
 
@@ -58,6 +60,14 @@ Expected properties:
 
 The final point is the main completeness cost. The variant handles the normal public usage while leaving an explicitly stale-token reentry unresolved.
 
+## Separate failure-path finding
+
+A non-retryable refresh failure with an expired access token calls `_removeSession()` before resolving the shared refresh `Deferred`. `_removeSession()` awaits `SIGNED_OUT` subscribers. If one of those subscribers throws, the initiating `_callRefreshToken()` rejects with the subscriber error, but the existing shared Deferred is neither resolved nor rejected before the `finally` block drops its reference. Concurrent refresh joiners can remain pending indefinitely.
+
+The focused lab now records this negative result. It is not repaired by either success-path settlement variant and should remain a separate candidate because it belongs to refresh-failure teardown and total Deferred settlement rather than `TOKEN_REFRESHED` result ownership.
+
+`dispose()` is also kept separate. Current source and the lockless migration document explicitly state that disposal does not abort in-flight fetches and that a disposed client may still persist a rotated session. A lifecycle generation fence would change a documented contract rather than repair an undocumented defect.
+
 ## Historical constraints
 
 - Supabase JS PR 2014 deferred one notification with `setTimeout(0)` and was later reverted by PR 2039 after SSR OAuth cookie writes could miss the response.
@@ -76,10 +86,10 @@ The experiment rejects these directions:
 - `setTimeout(0)` or `queueMicrotask` as a correctness boundary;
 - warning on every async callback;
 - blanket swallowing of notification transport failures;
-- changing error behavior for auth events other than `TOKEN_REFRESHED`;
+- changing error behavior for auth events other than `TOKEN_REFRESHED` in the first candidate;
 - issuing a second token rotation from inside `TOKEN_REFRESHED` merely to retrieve the session carried by the event;
 - relying on incidental microtask order without testing it;
-- changing every auth event when the reproduced problem belongs to refresh settlement;
+- changing every auth event when the reproduced success-path problem belongs to refresh settlement;
 - introducing Node-only async-context APIs into browser client code;
 - assuming a callback can be identified from another concurrent caller without an explicit public context contract.
 
@@ -97,9 +107,11 @@ The focused Jest files check:
 8. cross-tab callbacks receive the event session without a second rotation;
 9. non-refresh subscriber failures keep their existing rejection behavior;
 10. BroadcastChannel transport failures remain visible;
-11. stored credentials and returned credentials agree.
+11. stored credentials and returned credentials agree;
+12. an `AuthError` thrown by a successful refresh listener cannot erase the rotated session or populate refresh-failure cooldown state, under both `throwOnError` modes;
+13. a throwing `SIGNED_OUT` listener during expired-session refresh failure can leave a concurrent joiner pending, recorded as a separate negative result.
 
-The executable model records the same central timing distinction without package dependencies. It supports the design comparison but does not replace the real Jest matrix.
+The executable model records the central success-path timing distinction without package dependencies. It supports the design comparison but does not replace the real Jest matrix or the new failure-path characterization.
 
 ## Run
 
@@ -114,3 +126,4 @@ Distinguishing assertions:
 
 - Variant A: old-token joiner settles early; explicit old-token nested refresh succeeds.
 - Variant B: old-token joiner waits; explicit old-token nested refresh times out in the bounded probe.
+- Both variants: successful `TOKEN_REFRESHED` callback errors remain separate from auth-refresh errors; the distinct `SIGNED_OUT` teardown orphan remains characterized and unresolved.
