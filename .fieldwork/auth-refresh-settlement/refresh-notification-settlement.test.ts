@@ -19,13 +19,40 @@ const deferred = <T = void>() => {
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve))
 
-const settlesWithin = <T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> =>
-  Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`promise did not settle within ${timeoutMs}ms`)), timeoutMs)
-    ),
-  ])
+const settlesWithin = async <T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`promise did not settle within ${timeoutMs}ms`)),
+          timeoutMs
+        )
+      }),
+    ])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+}
+
+const outcomeWithin = async <T>(
+  promise: Promise<T>,
+  timeoutValue: T,
+  timeoutMs: number
+): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeout = setTimeout(() => resolve(timeoutValue), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+}
 
 const createFixture = async () => {
   const storage = memoryLocalStorageAdapter()
@@ -233,12 +260,13 @@ describe('Fieldwork auth refresh notification settlement', () => {
     fixture.client.onAuthStateChange(async (event) => {
       if (event !== 'TOKEN_REFRESHED') return
 
-      nestedOutcome = await Promise.race([
+      nestedOutcome = await outcomeWithin(
         fixture.client
           .refreshSession({ refresh_token: fixture.originalSession.refresh_token })
           .then(({ error }): 'success' | 'timeout' => (error ? 'timeout' : 'success')),
-        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 100)),
-      ])
+        'timeout',
+        100
+      )
     })
 
     const result = await settlesWithin(
