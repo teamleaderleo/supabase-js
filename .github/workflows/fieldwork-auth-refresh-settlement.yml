@@ -2,6 +2,12 @@ name: Fieldwork auth refresh settlement
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fieldwork/auth-refresh-settlement-lab
+    paths:
+      - '.fieldwork/auth-refresh-settlement/**'
+      - '.github/workflows/fieldwork-auth-refresh-settlement.yml'
   pull_request:
     branches:
       - master
