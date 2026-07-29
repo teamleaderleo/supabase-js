@@ -1,6 +1,6 @@
 import GoTrueClient from '../../packages/core/auth-js/src/GoTrueClient'
 import type { Session } from '../../packages/core/auth-js/src'
-import { setItemAsync } from '../../packages/core/auth-js/src/lib/helpers'
+import { getItemAsync, setItemAsync } from '../../packages/core/auth-js/src/lib/helpers'
 import { memoryLocalStorageAdapter } from '../../packages/core/auth-js/src/lib/local-storage'
 
 const createClient = async (session?: Session) => {
@@ -63,6 +63,50 @@ describe('Fieldwork refresh settlement boundaries', () => {
     await expect(
       (client as any)._notifyAllSubscribers('TOKEN_REFRESHED', session, true)
     ).rejects.toThrow('broadcast transport failed')
+
+    ;(client as any).broadcastChannel = null
+    await client.dispose()
+  })
+
+  test('transport failure exposes the selected joined-caller settlement behavior', async () => {
+    const originalSession: Session = {
+      ...session,
+      access_token: 'access-r1',
+      refresh_token: 'refresh-r1',
+    }
+    const rotatedSession: Session = {
+      ...session,
+      access_token: 'access-r2',
+      refresh_token: 'refresh-r2',
+    }
+    const { client, storage, storageKey } = await createClient(originalSession)
+    ;(client as any)._refreshAccessToken = jest.fn(async () => ({
+      data: { session: rotatedSession, user: rotatedSession.user },
+      error: null,
+    }))
+
+    let joinedOutcome: Promise<'success' | 'rejection'> | undefined
+    ;(client as any).broadcastChannel = {
+      postMessage: () => {
+        joinedOutcome = (client as any)
+          ._callRefreshToken(originalSession.refresh_token)
+          .then(
+            () => 'success' as const,
+            () => 'rejection' as const
+          )
+        throw new Error('broadcast transport failed after commit')
+      },
+    }
+
+    await expect(
+      (client as any)._callRefreshToken(originalSession.refresh_token)
+    ).rejects.toThrow('broadcast transport failed after commit')
+
+    expect(joinedOutcome).toBeDefined()
+    await expect(joinedOutcome).resolves.toBe(process.env.FIELDWORK_TRANSPORT_JOINER_OUTCOME)
+    expect(
+      ((await getItemAsync(storage, storageKey)) as Session | null)?.refresh_token
+    ).toBe(rotatedSession.refresh_token)
 
     ;(client as any).broadcastChannel = null
     await client.dispose()
