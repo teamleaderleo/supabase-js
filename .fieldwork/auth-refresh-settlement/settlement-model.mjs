@@ -22,7 +22,7 @@ class RefreshModel {
     this.variant = variant
     this.storage = { refresh_token: 'R1', access_token: 'A1' }
     this.refreshingDeferred = null
-    this.committedResult = null
+    this.notifyingRefreshResult = null
     this.subscribers = []
     this.serviceCalls = 0
     this.subscriberErrors = []
@@ -33,17 +33,23 @@ class RefreshModel {
   }
 
   async notify(session) {
+    const previousResult = this.notifyingRefreshResult
+    this.notifyingRefreshResult = { data: session, error: null }
     const errors = []
-    await Promise.all(
-      this.subscribers.map(async (callback) => {
-        try {
-          await callback('TOKEN_REFRESHED', session)
-        } catch (error) {
-          errors.push(error)
-        }
-      })
-    )
-    this.subscriberErrors.push(...errors.map((error) => String(error?.message ?? error)))
+    try {
+      await Promise.all(
+        this.subscribers.map(async (callback) => {
+          try {
+            await callback('TOKEN_REFRESHED', session)
+          } catch (error) {
+            errors.push(error)
+          }
+        })
+      )
+      this.subscriberErrors.push(...errors.map((error) => String(error?.message ?? error)))
+    } finally {
+      this.notifyingRefreshResult = previousResult
+    }
   }
 
   async refreshSession(currentSession) {
@@ -52,13 +58,11 @@ class RefreshModel {
   }
 
   async callRefreshToken(refreshToken) {
+    if (this.notifyingRefreshResult?.data?.refresh_token === refreshToken) {
+      return this.notifyingRefreshResult
+    }
+
     if (this.refreshingDeferred) {
-      if (
-        this.variant === 'token-aware-committed-result' &&
-        this.committedResult?.data?.refresh_token === refreshToken
-      ) {
-        return this.committedResult
-      }
       return this.refreshingDeferred.promise
     }
 
@@ -72,7 +76,6 @@ class RefreshModel {
       const session = { refresh_token: 'R2', access_token: 'A2' }
       this.storage = session
       const result = { data: session, error: null }
-      this.committedResult = result
 
       if (this.variant === 'early-shared-settlement') {
         deferred.resolve(result)
@@ -87,7 +90,6 @@ class RefreshModel {
       return result
     } finally {
       this.refreshingDeferred = null
-      this.committedResult = null
     }
   }
 }
@@ -101,6 +103,23 @@ async function defaultNested(variant) {
   const outer = await within(model.callRefreshToken('R1'))
   return {
     outerToken: outer.data.refresh_token,
+    nestedToken: nested.data.refresh_token,
+    storedToken: model.storage.refresh_token,
+    serviceCalls: model.serviceCalls,
+  }
+}
+
+async function queuedDefaultNested(variant) {
+  const model = new RefreshModel(variant)
+  const session = { refresh_token: 'R2', access_token: 'A2' }
+  model.storage = session
+  model.serviceCalls = 1
+  let nested = null
+  model.subscribe(async () => {
+    nested = await model.refreshSession()
+  })
+  await model.notify(session)
+  return {
     nestedToken: nested.data.refresh_token,
     storedToken: model.storage.refresh_token,
     serviceCalls: model.serviceCalls,
@@ -201,6 +220,7 @@ const results = {}
 for (const variant of ['early-shared-settlement', 'token-aware-committed-result']) {
   results[variant] = {
     defaultNested: await defaultNested(variant),
+    queuedDefaultNested: await queuedDefaultNested(variant),
     explicitOldNested: await explicitOldNested(variant),
     throwingSubscriber: await throwingSubscriber(variant),
     ssrWait: await ssrWait(variant),
