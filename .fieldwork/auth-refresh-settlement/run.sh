@@ -4,7 +4,10 @@ set -euo pipefail
 variant="${1:-}"
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source_file="packages/core/auth-js/src/GoTrueClient.ts"
-test_file="packages/core/auth-js/test/fieldwork-refresh-notification-settlement.test.ts"
+test_files=(
+  "packages/core/auth-js/test/fieldwork-refresh-notification-settlement.test.ts"
+  "packages/core/auth-js/test/fieldwork-init-refresh-subscriber-error.test.ts"
+)
 
 case "$variant" in
   early-shared-settlement)
@@ -27,21 +30,29 @@ cd "$root_dir"
 
 git apply --check "$patch_file"
 git apply "$patch_file"
-cp .fieldwork/auth-refresh-settlement/refresh-notification-settlement.test.ts "$test_file"
+cp \
+  .fieldwork/auth-refresh-settlement/refresh-notification-settlement.test.ts \
+  "${test_files[0]}"
+cp \
+  .fieldwork/auth-refresh-settlement/init-refresh-subscriber-error.test.ts \
+  "${test_files[1]}"
 
-node - "$test_file" <<'NODE'
+node - "${test_files[@]}" <<'NODE'
 const fs = require('node:fs')
-const path = process.argv[2]
-const source = fs.readFileSync(path, 'utf8')
-fs.writeFileSync(path, source.replaceAll('../../packages/core/auth-js/src', '../src'))
+for (const path of process.argv.slice(2)) {
+  const source = fs.readFileSync(path, 'utf8')
+  fs.writeFileSync(path, source.replaceAll('../../packages/core/auth-js/src', '../src'))
+}
 NODE
 
 cleanup() {
   git checkout -- "$source_file" >/dev/null 2>&1 || true
-  rm -f "$test_file"
+  rm -f "${test_files[@]}"
 }
 trap cleanup EXIT
 
 cd packages/core/auth-js
 pnpm exec jest --config jest.config.cli.js --runInBand \
-  test/fieldwork-refresh-notification-settlement.test.ts --coverage=false
+  test/fieldwork-refresh-notification-settlement.test.ts \
+  test/fieldwork-init-refresh-subscriber-error.test.ts \
+  --coverage=false
