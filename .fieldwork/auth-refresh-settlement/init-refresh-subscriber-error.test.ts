@@ -5,13 +5,22 @@ import { memoryLocalStorageAdapter } from '../../packages/core/auth-js/src/lib/l
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve))
 
-const settlesWithin = <T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> =>
-  Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`promise did not settle within ${timeoutMs}ms`)), timeoutMs)
-    ),
-  ])
+const settlesWithin = async <T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`promise did not settle within ${timeoutMs}ms`)),
+          timeoutMs
+        )
+      }),
+    ])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+}
 
 const createInitFixture = async () => {
   const storage = memoryLocalStorageAdapter()
