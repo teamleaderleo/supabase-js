@@ -32,12 +32,29 @@ const createClient = async (throwOnError = false) => {
     throwOnError,
   })
   await client.initialize()
-  await setItemAsync(storage, storageKey, originalSession)
-  ;(client as any)._refreshAccessToken = jest.fn(async () => ({
-    data: { session: rotatedSession, user: rotatedSession.user },
-    error: null,
-  }))
   return { client, storage, storageKey }
+}
+
+const registerFailingCookieWriter = async (client: GoTrueClient) => {
+  let finishInitialDelivery: () => void = () => {}
+  const initialDelivered = new Promise<void>((resolve) => {
+    finishInitialDelivery = resolve
+  })
+  let cookieWriteAttempts = 0
+
+  client.onAuthStateChange(async (event, session) => {
+    if (event === 'INITIAL_SESSION') {
+      finishInitialDelivery()
+      return
+    }
+    if (event !== 'TOKEN_REFRESHED' || !session) return
+    cookieWriteAttempts += 1
+    await Promise.resolve()
+    throw new Error('fieldwork SSR setAll failed')
+  })
+
+  await initialDelivered
+  return () => cookieWriteAttempts
 }
 
 describe('Fieldwork SSR cookie persistence boundary', () => {
@@ -50,25 +67,21 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
     async (throwOnError) => {
       const { client, storage, storageKey } = await createClient(throwOnError)
       jest.spyOn(console, 'error').mockImplementation(() => {})
+      const getCookieWriteAttempts = await registerFailingCookieWriter(client)
+      await setItemAsync(storage, storageKey, originalSession)
+      ;(client as any)._refreshAccessToken = jest.fn(async () => ({
+        data: { session: rotatedSession, user: rotatedSession.user },
+        error: null,
+      }))
 
       const responseCookieRefreshToken = originalSession.refresh_token
-      let cookieWriteAttempts = 0
-      client.onAuthStateChange(async (event, session) => {
-        if (event !== 'TOKEN_REFRESHED' || !session) return
-        cookieWriteAttempts += 1
-        await Promise.resolve()
-        throw new Error('fieldwork SSR setAll failed')
-      })
-
       await expect(client.refreshSession()).resolves.toMatchObject({
         data: { session: { refresh_token: rotatedSession.refresh_token } },
         error: null,
       })
 
-      expect(cookieWriteAttempts).toBe(Number(process.env.FIELDWORK_SSR_WRITE_ATTEMPTS))
-      expect((client as any)._refreshAccessToken).toHaveBeenCalledTimes(
-        Number(process.env.FIELDWORK_PUBLIC_REFRESH_REQUESTS)
-      )
+      expect(getCookieWriteAttempts()).toBe(1)
+      expect((client as any)._refreshAccessToken).toHaveBeenCalledTimes(1)
       expect(responseCookieRefreshToken).toBe(originalSession.refresh_token)
       expect(
         ((await getItemAsync(storage, storageKey)) as Session | null)?.refresh_token
@@ -82,6 +95,8 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
   test('current candidate gives every joined refresh caller success while the response cookie stays stale', async () => {
     const { client, storage, storageKey } = await createClient()
     jest.spyOn(console, 'error').mockImplementation(() => {})
+    const getCookieWriteAttempts = await registerFailingCookieWriter(client)
+    await setItemAsync(storage, storageKey, originalSession)
 
     let markStarted: () => void = () => {}
     const started = new Promise<void>((resolve) => {
@@ -101,12 +116,6 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
     })
 
     const responseCookieRefreshToken = originalSession.refresh_token
-    client.onAuthStateChange(async (event, session) => {
-      if (event !== 'TOKEN_REFRESHED' || !session) return
-      await Promise.resolve()
-      throw new Error('fieldwork SSR setAll failed')
-    })
-
     const initiating = (client as any)._callRefreshToken(originalSession.refresh_token)
     await started
     const joining = (client as any)._callRefreshToken(originalSession.refresh_token)
@@ -121,6 +130,7 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
       error: null,
     })
 
+    expect(getCookieWriteAttempts()).toBe(1)
     expect(responseCookieRefreshToken).toBe(originalSession.refresh_token)
     expect(
       ((await getItemAsync(storage, storageKey)) as Session | null)?.refresh_token
