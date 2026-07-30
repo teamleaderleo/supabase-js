@@ -33,6 +33,7 @@ jobs:
         variant:
           - early-shared-settlement
           - token-aware-committed-result
+          - notification-failure-separation
 
     steps:
       - name: Check out experiment branch
