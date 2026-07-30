@@ -4,12 +4,13 @@ set -euo pipefail
 variant="${1:-}"
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source_file="packages/core/auth-js/src/GoTrueClient.ts"
-test_files=(
+auth_test_files=(
   "packages/core/auth-js/test/fieldwork-refresh-notification-settlement.test.ts"
   "packages/core/auth-js/test/fieldwork-init-refresh-subscriber-error.test.ts"
   "packages/core/auth-js/test/fieldwork-settlement-boundaries.test.ts"
   "packages/core/auth-js/test/fieldwork-initial-session-callback-error.test.ts"
 )
+supabase_test_file="packages/core/supabase-js/test/fieldwork-realtime-refresh-token.test.ts"
 
 case "$variant" in
   early-shared-settlement)
@@ -36,18 +37,21 @@ git apply --check "$patch_file"
 git apply "$patch_file"
 cp \
   .fieldwork/auth-refresh-settlement/refresh-notification-settlement.test.ts \
-  "${test_files[0]}"
+  "${auth_test_files[0]}"
 cp \
   .fieldwork/auth-refresh-settlement/init-refresh-subscriber-error.test.ts \
-  "${test_files[1]}"
+  "${auth_test_files[1]}"
 cp \
   .fieldwork/auth-refresh-settlement/settlement-boundaries.test.ts \
-  "${test_files[2]}"
+  "${auth_test_files[2]}"
 cp \
   .fieldwork/auth-refresh-settlement/initial-session-callback-error.test.ts \
-  "${test_files[3]}"
+  "${auth_test_files[3]}"
+cp \
+  .fieldwork/auth-refresh-settlement/supabase-client-realtime-refresh.test.ts \
+  "$supabase_test_file"
 
-node - "${test_files[@]}" <<'NODE'
+node - "${auth_test_files[@]}" <<'NODE'
 const fs = require('node:fs')
 for (const path of process.argv.slice(2)) {
   const source = fs.readFileSync(path, 'utf8')
@@ -55,9 +59,19 @@ for (const path of process.argv.slice(2)) {
 }
 NODE
 
+node - "$supabase_test_file" <<'NODE'
+const fs = require('node:fs')
+const path = process.argv[2]
+const source = fs
+  .readFileSync(path, 'utf8')
+  .replaceAll('../../packages/core/supabase-js/src/SupabaseClient', '../src/SupabaseClient')
+  .replaceAll('../../packages/core/auth-js/src', '../../auth-js/src')
+fs.writeFileSync(path, source)
+NODE
+
 cleanup() {
   git checkout -- "$source_file" >/dev/null 2>&1 || true
-  rm -f "${test_files[@]}"
+  rm -f "${auth_test_files[@]}" "$supabase_test_file"
 }
 trap cleanup EXIT
 
@@ -67,4 +81,9 @@ pnpm exec jest --config jest.config.cli.js --runInBand \
   test/fieldwork-init-refresh-subscriber-error.test.ts \
   test/fieldwork-settlement-boundaries.test.ts \
   test/fieldwork-initial-session-callback-error.test.ts \
+  --coverage=false
+
+cd ../supabase-js
+pnpm exec jest --runInBand --detectOpenHandles \
+  test/fieldwork-realtime-refresh-token.test.ts \
   --coverage=false
