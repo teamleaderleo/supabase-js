@@ -6,6 +6,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source_file="packages/core/auth-js/src/GoTrueClient.ts"
 supabase_test_file="packages/core/supabase-js/test/fieldwork-realtime-refresh-token.test.ts"
 auth_test_names=()
+post_transform=""
 
 case "$variant" in
   early-shared-settlement)
@@ -50,8 +51,17 @@ case "$variant" in
       initial-session-callback-error.test.ts
     )
     ;;
+  generation-aware-notification-result)
+    patch_file=".fieldwork/auth-refresh-settlement/patches/notification-result-map.patch"
+    post_transform=".fieldwork/auth-refresh-settlement/generation-aware-notification-result.py"
+    auth_test_names=(
+      notification-failure-separation.test.ts
+      generation-aware-notification-result.test.ts
+      initial-session-callback-error.test.ts
+    )
+    ;;
   *)
-    echo "usage: $0 <early-shared-settlement|token-aware-committed-result|notification-failure-separation|notification-result-map>" >&2
+    echo "usage: $0 <early-shared-settlement|token-aware-committed-result|notification-failure-separation|notification-result-map|generation-aware-notification-result>" >&2
     exit 2
     ;;
 esac
@@ -60,6 +70,10 @@ cd "$root_dir"
 
 git apply --check "$patch_file"
 git apply "$patch_file"
+if [[ -n "$post_transform" ]]; then
+  python3 "$post_transform"
+fi
+git diff --check
 
 auth_test_files=()
 auth_jest_args=()
