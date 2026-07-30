@@ -30,7 +30,7 @@ describe('Fieldwork SupabaseClient Realtime refresh handoff', () => {
         skipAutoInitialize: true,
       },
     })
-    await client.auth.initialize()
+    await (client.auth as any).initialize()
     await setItemAsync(storage, storageKey, baseSession)
 
     const rotatedSession: Session = {
