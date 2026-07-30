@@ -83,7 +83,10 @@ pnpm exec jest --config jest.config.cli.js --runInBand \
   test/fieldwork-initial-session-callback-error.test.ts \
   --coverage=false
 
-cd ../supabase-js
+cd "$root_dir"
+pnpm --filter '@supabase/supabase-js...' run build
+
+cd packages/core/supabase-js
 pnpm exec jest --runInBand --detectOpenHandles \
   test/fieldwork-realtime-refresh-token.test.ts \
   --coverage=false
