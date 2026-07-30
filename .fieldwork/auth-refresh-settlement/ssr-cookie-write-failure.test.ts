@@ -63,7 +63,7 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
   })
 
   test.each([false, true])(
-    'current candidate hides a TOKEN_REFRESHED cookie-write failure after commit (throwOnError=%s)',
+    'candidate hides repeated TOKEN_REFRESHED cookie-write failures and returns success (throwOnError=%s)',
     async (throwOnError) => {
       const { client, storage, storageKey } = await createClient(throwOnError)
       jest.spyOn(console, 'error').mockImplementation(() => {})
@@ -80,8 +80,8 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
         error: null,
       })
 
-      expect(getCookieWriteAttempts()).toBe(1)
-      expect((client as any)._refreshAccessToken).toHaveBeenCalledTimes(1)
+      expect(getCookieWriteAttempts()).toBe(2)
+      expect((client as any)._refreshAccessToken).toHaveBeenCalledTimes(2)
       expect(responseCookieRefreshToken).toBe(originalSession.refresh_token)
       expect(
         ((await getItemAsync(storage, storageKey)) as Session | null)?.refresh_token
@@ -92,7 +92,7 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
     }
   )
 
-  test('current candidate gives every joined refresh caller success while the response cookie stays stale', async () => {
+  test('candidate gives every joined refresh caller success while the response cookie stays stale', async () => {
     const { client, storage, storageKey } = await createClient()
     jest.spyOn(console, 'error').mockImplementation(() => {})
     const getCookieWriteAttempts = await registerFailingCookieWriter(client)
