@@ -30,7 +30,8 @@ describe('Fieldwork SupabaseClient Realtime refresh handoff', () => {
         skipAutoInitialize: true,
       },
     })
-    await (client.auth as any).initialize()
+    const auth = client.auth as any
+    await auth.initialize()
     await setItemAsync(storage, storageKey, baseSession)
 
     const rotatedSession: Session = {
@@ -39,7 +40,7 @@ describe('Fieldwork SupabaseClient Realtime refresh handoff', () => {
       refresh_token: 'refresh-r2',
       expires_at: Math.floor(Date.now() / 1000) + 3600,
     }
-    ;(client.auth as any)._refreshAccessToken = jest.fn(async () => ({
+    auth._refreshAccessToken = jest.fn(async () => ({
       data: { session: rotatedSession, user: rotatedSession.user },
       error: null,
     }))
@@ -58,7 +59,7 @@ describe('Fieldwork SupabaseClient Realtime refresh handoff', () => {
       await realtimeAuthPromise
     })
 
-    await expect(client.auth.refreshSession()).resolves.toMatchObject({
+    await expect(auth.refreshSession()).resolves.toMatchObject({
       data: { session: { refresh_token: rotatedSession.refresh_token } },
       error: null,
     })
@@ -71,6 +72,6 @@ describe('Fieldwork SupabaseClient Realtime refresh handoff', () => {
     await realtimeAuthPromise
     expect(realtimeAuthCompleted).toBe(true)
 
-    await client.auth.dispose()
+    await auth.dispose()
   })
 })
