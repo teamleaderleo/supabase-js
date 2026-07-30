@@ -35,7 +35,7 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
  
        // Snapshot storage before the fetch. The commit guard discards the
        // rotated tokens only when a non-null pre-fetch snapshot changed under
-@@ -5064,20 +5075,28 @@ export default class GoTrueClient {
+@@ -5064,20 +5075,29 @@ export default class GoTrueClient {
          return discarded
        }
  
@@ -67,7 +67,7 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
        if (isAuthError(error)) {
          const result = { data: null, error }
  
-@@ -5118,6 +5137,11 @@ export default class GoTrueClient {
+@@ -5118,6 +5138,11 @@ export default class GoTrueClient {
        return
      }
  
@@ -79,7 +79,7 @@ diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/s
      const debugName = `#_notifyAllSubscribers(${event})`
      this._debug(debugName, 'begin', session, `broadcast = ${broadcast}`)
  
-@@ -5140,6 +5164,7 @@ export default class GoTrueClient {
+@@ -5140,6 +5165,7 @@ export default class GoTrueClient {
          throw errors[0]
        }
      } finally {
