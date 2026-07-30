@@ -152,7 +152,8 @@ describe('Fieldwork refresh settlement boundaries', () => {
         access_token: 'access-r2',
         refresh_token: 'refresh-r2',
       }
-      const { client, storage, storageKey } = await createClient(originalSession, throwOnError)
+      const { client, storage, storageKey } = await createClient(undefined, throwOnError)
+      await setItemAsync(storage, storageKey, originalSession)
       jest.spyOn(console, 'error').mockImplementation(() => {})
       ;(client as any)._refreshAccessToken = jest.fn(async () => ({
         data: { session: rotatedSession, user: rotatedSession.user },
@@ -185,7 +186,8 @@ describe('Fieldwork refresh settlement boundaries', () => {
       refresh_token: 'refresh-expired',
       expires_at: Math.floor(Date.now() / 1000) - 60,
     }
-    const { client, storage, storageKey } = await createClient(expiredSession)
+    const { client, storage, storageKey } = await createClient()
+    await setItemAsync(storage, storageKey, expiredSession)
     jest.spyOn(console, 'error').mockImplementation(() => {})
 
     let markStarted: () => void = () => {}
