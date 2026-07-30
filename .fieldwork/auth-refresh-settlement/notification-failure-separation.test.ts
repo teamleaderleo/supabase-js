@@ -1,6 +1,6 @@
 import GoTrueClient from '../../packages/core/auth-js/src/GoTrueClient'
 import { AuthError } from '../../packages/core/auth-js/src'
-import type { Session } from '../../packages/core/auth-js/src'
+import type { AuthChangeEvent, Session } from '../../packages/core/auth-js/src'
 import { getItemAsync, setItemAsync } from '../../packages/core/auth-js/src/lib/helpers'
 import { memoryLocalStorageAdapter } from '../../packages/core/auth-js/src/lib/local-storage'
 
@@ -35,8 +35,28 @@ const createClient = async (throwOnError = false) => {
     throwOnError,
   })
   await client.initialize()
-  await setItemAsync(storage, storageKey, originalSession)
   return { client, storage, storageKey }
+}
+
+const registerAfterInitial = async (
+  client: GoTrueClient,
+  callback: (event: AuthChangeEvent, session: Session | null) => Promise<void> | void
+) => {
+  let markInitialDelivered: () => void = () => {}
+  const initialDelivered = new Promise<void>((resolve) => {
+    markInitialDelivered = resolve
+  })
+
+  const result = client.onAuthStateChange(async (event, session) => {
+    if (event === 'INITIAL_SESSION') {
+      markInitialDelivered()
+      return
+    }
+    await callback(event, session)
+  })
+
+  await initialDelivered
+  return result.data.subscription
 }
 
 const storedRefreshToken = async (
@@ -56,6 +76,28 @@ describe('Fieldwork committed refresh notification failure separation', () => {
     const onUnhandled = (reason: unknown) => unhandled.push(reason)
     process.on('unhandledRejection', onUnhandled)
 
+    const visited: string[] = []
+    let nestedSession: Session | null | undefined
+    await Promise.all([
+      registerAfterInitial(client, async (event) => {
+        if (event !== 'TOKEN_REFRESHED') return
+        visited.push('nested')
+        const { data, error } = await client.refreshSession()
+        expect(error).toBeNull()
+        nestedSession = data.session
+      }),
+      registerAfterInitial(client, async (event) => {
+        if (event !== 'TOKEN_REFRESHED') return
+        visited.push('throwing')
+        throw new Error('fieldwork notification failed after commit')
+      }),
+      registerAfterInitial(client, async (event) => {
+        if (event !== 'TOKEN_REFRESHED') return
+        visited.push('healthy')
+      }),
+    ])
+    await setItemAsync(storage, storageKey, originalSession)
+
     let markStarted: () => void = () => {}
     const started = new Promise<void>((resolve) => {
       markStarted = resolve
@@ -74,33 +116,19 @@ describe('Fieldwork committed refresh notification failure separation', () => {
     })
     ;(client as any)._refreshAccessToken = refreshAccessToken
 
-    const visited: string[] = []
-    let nestedSession: Session | null | undefined
-    client.onAuthStateChange(async (event) => {
-      if (event !== 'TOKEN_REFRESHED') return
-      visited.push('nested')
-      const { data, error } = await client.refreshSession()
-      expect(error).toBeNull()
-      nestedSession = data.session
-    })
-    client.onAuthStateChange(async (event) => {
-      if (event !== 'TOKEN_REFRESHED') return
-      visited.push('throwing')
-      throw new Error('fieldwork notification failed after commit')
-    })
-    client.onAuthStateChange(async (event) => {
-      if (event !== 'TOKEN_REFRESHED') return
-      visited.push('healthy')
-    })
-
     try {
       const initiating = (client as any)._callRefreshToken(originalSession.refresh_token)
+      const initiatingExpectation = expect(initiating).rejects.toThrow(
+        'fieldwork notification failed after commit'
+      )
       await started
       const joining = (client as any)._callRefreshToken(originalSession.refresh_token)
+      const joiningExpectation = expect(joining).rejects.toThrow(
+        'fieldwork notification failed after commit'
+      )
       releaseRefresh()
 
-      await expect(initiating).rejects.toThrow('fieldwork notification failed after commit')
-      await expect(joining).rejects.toThrow('fieldwork notification failed after commit')
+      await Promise.all([initiatingExpectation, joiningExpectation])
       await nextTurn()
 
       expect(nestedSession?.refresh_token).toBe(rotatedSession.refresh_token)
@@ -121,18 +149,20 @@ describe('Fieldwork committed refresh notification failure separation', () => {
     async (throwOnError) => {
       const { client, storage, storageKey } = await createClient(throwOnError)
       jest.spyOn(console, 'error').mockImplementation(() => {})
+
+      let callbackCalls = 0
+      await registerAfterInitial(client, async (event) => {
+        if (event !== 'TOKEN_REFRESHED') return
+        callbackCalls += 1
+        throw new AuthError('fieldwork callback auth error')
+      })
+      await setItemAsync(storage, storageKey, originalSession)
+
       const refreshAccessToken = jest.fn(async () => ({
         data: { session: rotatedSession, user: rotatedSession.user },
         error: null,
       }))
       ;(client as any)._refreshAccessToken = refreshAccessToken
-
-      let callbackCalls = 0
-      client.onAuthStateChange(async (event) => {
-        if (event !== 'TOKEN_REFRESHED') return
-        callbackCalls += 1
-        throw new AuthError('fieldwork callback auth error')
-      })
 
       if (throwOnError) {
         await expect(client.refreshSession()).rejects.toThrow('fieldwork callback auth error')
@@ -154,20 +184,22 @@ describe('Fieldwork committed refresh notification failure separation', () => {
   test('SSR-style cookie persistence failure stays visible and stops the public refresh after one token request', async () => {
     const { client, storage, storageKey } = await createClient()
     jest.spyOn(console, 'error').mockImplementation(() => {})
-    const refreshAccessToken = jest.fn(async () => ({
-      data: { session: rotatedSession, user: rotatedSession.user },
-      error: null,
-    }))
-    ;(client as any)._refreshAccessToken = refreshAccessToken
 
     const responseCookieRefreshToken = originalSession.refresh_token
     let cookieWriteAttempts = 0
-    client.onAuthStateChange(async (event, session) => {
+    await registerAfterInitial(client, async (event, session) => {
       if (event !== 'TOKEN_REFRESHED' || !session) return
       cookieWriteAttempts += 1
       await Promise.resolve()
       throw new Error('fieldwork SSR setAll failed')
     })
+    await setItemAsync(storage, storageKey, originalSession)
+
+    const refreshAccessToken = jest.fn(async () => ({
+      data: { session: rotatedSession, user: rotatedSession.user },
+      error: null,
+    }))
+    ;(client as any)._refreshAccessToken = refreshAccessToken
 
     await expect(client.refreshSession()).rejects.toThrow('fieldwork SSR setAll failed')
 
@@ -181,6 +213,7 @@ describe('Fieldwork committed refresh notification failure separation', () => {
 
   test('notification transport failure rejects every ordinary caller after commit', async () => {
     const { client, storage, storageKey } = await createClient()
+    await setItemAsync(storage, storageKey, originalSession)
 
     let markStarted: () => void = () => {}
     const started = new Promise<void>((resolve) => {
@@ -206,12 +239,17 @@ describe('Fieldwork committed refresh notification failure separation', () => {
     }
 
     const initiating = (client as any)._callRefreshToken(originalSession.refresh_token)
+    const initiatingExpectation = expect(initiating).rejects.toThrow(
+      'fieldwork broadcast failed after commit'
+    )
     await started
     const joining = (client as any)._callRefreshToken(originalSession.refresh_token)
+    const joiningExpectation = expect(joining).rejects.toThrow(
+      'fieldwork broadcast failed after commit'
+    )
     releaseRefresh()
 
-    await expect(initiating).rejects.toThrow('fieldwork broadcast failed after commit')
-    await expect(joining).rejects.toThrow('fieldwork broadcast failed after commit')
+    await Promise.all([initiatingExpectation, joiningExpectation])
     expect(refreshAccessToken).toHaveBeenCalledTimes(1)
     expect(await storedRefreshToken(storage, storageKey)).toBe(rotatedSession.refresh_token)
     expect((client as any).lastRefreshFailure).toBeNull()
@@ -221,12 +259,7 @@ describe('Fieldwork committed refresh notification failure separation', () => {
   })
 
   test('successful notification remains awaited by initiator and old-token joiner', async () => {
-    const { client } = await createClient()
-    const refreshAccessToken = jest.fn(async () => ({
-      data: { session: rotatedSession, user: rotatedSession.user },
-      error: null,
-    }))
-    ;(client as any)._refreshAccessToken = refreshAccessToken
+    const { client, storage, storageKey } = await createClient()
 
     let markCallbackStarted: () => void = () => {}
     const callbackStarted = new Promise<void>((resolve) => {
@@ -236,11 +269,18 @@ describe('Fieldwork committed refresh notification failure separation', () => {
     const callbackRelease = new Promise<void>((resolve) => {
       releaseCallback = resolve
     })
-    client.onAuthStateChange(async (event) => {
+    await registerAfterInitial(client, async (event) => {
       if (event !== 'TOKEN_REFRESHED') return
       markCallbackStarted()
       await callbackRelease
     })
+    await setItemAsync(storage, storageKey, originalSession)
+
+    const refreshAccessToken = jest.fn(async () => ({
+      data: { session: rotatedSession, user: rotatedSession.user },
+      error: null,
+    }))
+    ;(client as any)._refreshAccessToken = refreshAccessToken
 
     let initiatingSettled = false
     const initiating = (client as any)
@@ -279,7 +319,7 @@ describe('Fieldwork committed refresh notification failure separation', () => {
   test('non-refresh callback failure remains a direct notification failure', async () => {
     const { client } = await createClient()
     jest.spyOn(console, 'error').mockImplementation(() => {})
-    client.onAuthStateChange(async (event) => {
+    await registerAfterInitial(client, async (event) => {
       if (event === 'SIGNED_IN') {
         throw new Error('fieldwork signed-in callback failed')
       }
