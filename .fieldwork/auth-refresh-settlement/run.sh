@@ -9,6 +9,7 @@ auth_test_files=(
   "packages/core/auth-js/test/fieldwork-init-refresh-subscriber-error.test.ts"
   "packages/core/auth-js/test/fieldwork-settlement-boundaries.test.ts"
   "packages/core/auth-js/test/fieldwork-initial-session-callback-error.test.ts"
+  "packages/core/auth-js/test/fieldwork-ssr-cookie-write-failure.test.ts"
 )
 supabase_test_file="packages/core/supabase-js/test/fieldwork-realtime-refresh-token.test.ts"
 
@@ -48,6 +49,9 @@ cp \
   .fieldwork/auth-refresh-settlement/initial-session-callback-error.test.ts \
   "${auth_test_files[3]}"
 cp \
+  .fieldwork/auth-refresh-settlement/ssr-cookie-write-failure.test.ts \
+  "${auth_test_files[4]}"
+cp \
   .fieldwork/auth-refresh-settlement/supabase-client-realtime-refresh.test.ts \
   "$supabase_test_file"
 
@@ -81,6 +85,7 @@ pnpm exec jest --config jest.config.cli.js --runInBand \
   test/fieldwork-init-refresh-subscriber-error.test.ts \
   test/fieldwork-settlement-boundaries.test.ts \
   test/fieldwork-initial-session-callback-error.test.ts \
+  test/fieldwork-ssr-cookie-write-failure.test.ts \
   --coverage=false
 
 cd "$root_dir"
