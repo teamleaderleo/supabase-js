@@ -42,8 +42,16 @@ case "$variant" in
       initial-session-callback-error.test.ts
     )
     ;;
+  notification-result-map)
+    patch_file=".fieldwork/auth-refresh-settlement/patches/notification-result-map.patch"
+    auth_test_names=(
+      notification-failure-separation.test.ts
+      overlapping-notification-map.test.ts
+      initial-session-callback-error.test.ts
+    )
+    ;;
   *)
-    echo "usage: $0 <early-shared-settlement|token-aware-committed-result|notification-failure-separation>" >&2
+    echo "usage: $0 <early-shared-settlement|token-aware-committed-result|notification-failure-separation|notification-result-map>" >&2
     exit 2
     ;;
 esac
