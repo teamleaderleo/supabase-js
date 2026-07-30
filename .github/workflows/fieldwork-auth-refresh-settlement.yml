@@ -93,8 +93,8 @@ jobs:
       - name: Run unpatched SSR persistence baseline
         run: bash .fieldwork/auth-refresh-settlement/run-ssr-baseline.sh
 
-  public-ssr-generation-5:
-    name: public-ssr-generation-5
+  public-ssr-generation-6:
+    name: public-ssr-generation-6
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -126,16 +126,17 @@ jobs:
         working-directory: .fieldwork/vendor/supabase-ssr
         run: pnpm install --frozen-lockfile
 
-      - name: Apply generation-5 Auth candidate
+      - name: Apply generation-6 Auth candidate
         run: |
           git apply --check .fieldwork/auth-refresh-settlement/patches/notification-result-map.patch
           git apply .fieldwork/auth-refresh-settlement/patches/notification-result-map.patch
+          python3 .fieldwork/auth-refresh-settlement/generation-aware-notification-result.py
           git diff --check
 
       - name: Build owned Supabase packages
         run: pnpm --filter '@supabase/supabase-js...' run build
 
-      - name: Link owned generation-5 Supabase package into exact SSR source
+      - name: Link owned generation-6 Supabase package into exact SSR source
         run: |
           ssr_dir="$GITHUB_WORKSPACE/.fieldwork/vendor/supabase-ssr"
           package_dir="$GITHUB_WORKSPACE/packages/core/supabase-js"
@@ -156,11 +157,11 @@ jobs:
           NODE
           cp \
             .fieldwork/auth-refresh-settlement/ssr-generation-5.integration.spec.ts \
-            "$ssr_dir/src/fieldwork-generation-5.integration.spec.ts"
+            "$ssr_dir/src/fieldwork-generation-6.integration.spec.ts"
 
       - name: Run exact public SSR adapter controls
         working-directory: .fieldwork/vendor/supabase-ssr
         run: >-
           pnpm exec vitest run
-          src/fieldwork-generation-5.integration.spec.ts
+          src/fieldwork-generation-6.integration.spec.ts
           --reporter verbose
