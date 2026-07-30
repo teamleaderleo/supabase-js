@@ -38,6 +38,7 @@ case "$variant" in
     patch_file=".fieldwork/auth-refresh-settlement/patches/notification-failure-separation.patch"
     auth_test_names=(
       notification-failure-separation.test.ts
+      overlapping-notification-slot.test.ts
       initial-session-callback-error.test.ts
     )
     ;;
