@@ -1,0 +1,167 @@
+name: Fieldwork auth refresh settlement
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fieldwork/auth-refresh-settlement-lab
+    paths:
+      - '.fieldwork/auth-refresh-settlement/**'
+      - '.github/workflows/fieldwork-auth-refresh-settlement.yml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.fieldwork/auth-refresh-settlement/**'
+      - '.github/workflows/fieldwork-auth-refresh-settlement.yml'
+
+concurrency:
+  group: fieldwork-auth-refresh-settlement-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  auth-refresh-settlement:
+    name: ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - early-shared-settlement
+          - token-aware-committed-result
+          - notification-failure-separation
+          - notification-result-map
+          - generation-aware-notification-result
+
+    steps:
+      - name: Check out experiment branch
+        uses: actions/checkout@v4
+
+      - name: Set up repository Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Enable pinned pnpm
+        run: corepack enable
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check experiment runner
+        run: |
+          bash -n .fieldwork/auth-refresh-settlement/run.sh
+          python3 -m py_compile \
+            .fieldwork/auth-refresh-settlement/generation-aware-notification-result.py
+
+      - name: Verify executable model result
+        run: |
+          node .fieldwork/auth-refresh-settlement/settlement-model.mjs > /tmp/settlement-model.result.json
+          diff -u \
+            .fieldwork/auth-refresh-settlement/settlement-model.result.json \
+            /tmp/settlement-model.result.json
+
+      - name: Run real auth-js regression matrix
+        run: bash .fieldwork/auth-refresh-settlement/run.sh "${{ matrix.variant }}"
+
+  ssr-cookie-write-baseline:
+    name: unpatched-ssr-cookie-write-baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out experiment branch
+        uses: actions/checkout@v4
+
+      - name: Set up repository Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Enable pinned pnpm
+        run: corepack enable
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check baseline runner
+        run: bash -n .fieldwork/auth-refresh-settlement/run-ssr-baseline.sh
+
+      - name: Run unpatched SSR persistence baseline
+        run: bash .fieldwork/auth-refresh-settlement/run-ssr-baseline.sh
+
+  public-ssr-generation-6:
+    name: public-ssr-generation-6
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out owned experiment branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check out exact public @supabase/ssr source
+        uses: actions/checkout@v4
+        with:
+          repository: supabase/ssr
+          ref: 69a6209482ddde7b1bd769f7c8ca9a604cb65960
+          path: .fieldwork/vendor/supabase-ssr
+          persist-credentials: false
+
+      - name: Set up repository Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Enable pinned package managers
+        run: corepack enable
+
+      - name: Install owned workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install exact SSR source dependencies
+        working-directory: .fieldwork/vendor/supabase-ssr
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply generation-6 Auth candidate
+        run: |
+          git apply --check .fieldwork/auth-refresh-settlement/patches/notification-result-map.patch
+          git apply .fieldwork/auth-refresh-settlement/patches/notification-result-map.patch
+          python3 .fieldwork/auth-refresh-settlement/generation-aware-notification-result.py
+          git diff --check
+
+      - name: Build owned Supabase packages
+        run: pnpm --filter '@supabase/supabase-js...' run build
+
+      - name: Link owned generation-6 Supabase package into exact SSR source
+        run: |
+          ssr_dir="$GITHUB_WORKSPACE/.fieldwork/vendor/supabase-ssr"
+          package_dir="$GITHUB_WORKSPACE/packages/core/supabase-js"
+          rm -rf "$ssr_dir/node_modules/@supabase/supabase-js"
+          ln -s "$package_dir" "$ssr_dir/node_modules/@supabase/supabase-js"
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const packageDir = path.resolve('packages/core/supabase-js')
+          const pkg = JSON.parse(
+            fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'),
+          )
+          for (const entry of [pkg.main, pkg.module, pkg.types]) {
+            if (typeof entry !== 'string' || !fs.existsSync(path.join(packageDir, entry))) {
+              throw new Error(`missing declared package entry: ${String(entry)}`)
+            }
+          }
+          NODE
+          cp \
+            .fieldwork/auth-refresh-settlement/ssr-generation-5.integration.spec.ts \
+            "$ssr_dir/src/fieldwork-generation-6.integration.spec.ts"
+
+      - name: Run exact public SSR adapter controls
+        working-directory: .fieldwork/vendor/supabase-ssr
+        run: >-
+          pnpm exec vitest run
+          src/fieldwork-generation-6.integration.spec.ts
+          --reporter verbose

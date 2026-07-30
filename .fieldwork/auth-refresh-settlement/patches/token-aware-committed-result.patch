@@ -1,0 +1,48 @@
+diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/src/GoTrueClient.ts
+--- a/packages/core/auth-js/src/GoTrueClient.ts
++++ b/packages/core/auth-js/src/GoTrueClient.ts
+@@ -298,6 +298,7 @@ export default class GoTrueClient {
+   protected autoRefreshTickTimeout: ReturnType<typeof setTimeout> | null = null
+   protected visibilityChangedCallback: (() => Promise<any>) | null = null
+   protected refreshingDeferred: Deferred<CallRefreshTokenResult> | null = null
++  protected notifyingRefreshResult: CallRefreshTokenResult | null = null
+   /**
+    * Cache of the most recent refresh failure, keyed by the refresh token
+    * that failed. Serial callers passing the *same* token within
+@@ -4960,6 +4961,10 @@ export default class GoTrueClient {
+       throw new AuthSessionMissingError()
+     }
+ 
++    if (this.notifyingRefreshResult?.data?.refresh_token === refreshToken) {
++      return this.notifyingRefreshResult
++    }
++
+     // refreshing is already in progress
+     if (this.refreshingDeferred) {
+       return this.refreshingDeferred.promise
+@@ -5118,6 +5123,11 @@ export default class GoTrueClient {
+       return
+     }
+ 
++    const previousNotifyingRefreshResult = this.notifyingRefreshResult
++    if (event === 'TOKEN_REFRESHED' && session) {
++      this.notifyingRefreshResult = { data: session, error: null }
++    }
++
+     const debugName = `#_notifyAllSubscribers(${event})`
+     this._debug(debugName, 'begin', session, `broadcast = ${broadcast}`)
+ 
+@@ -5136,9 +5146,12 @@ export default class GoTrueClient {
+           console.error(errors[i])
+         }
+ 
+-        throw errors[0]
++        if (event !== 'TOKEN_REFRESHED') {
++          throw errors[0]
++        }
+       }
+     } finally {
++      this.notifyingRefreshResult = previousNotifyingRefreshResult
+       this._debug(debugName, 'end')
+     }
+   }

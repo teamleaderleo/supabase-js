@@ -1,0 +1,109 @@
+diff --git a/packages/core/auth-js/src/GoTrueClient.ts b/packages/core/auth-js/src/GoTrueClient.ts
+--- a/packages/core/auth-js/src/GoTrueClient.ts
++++ b/packages/core/auth-js/src/GoTrueClient.ts
+@@ -298,6 +298,10 @@ export default class GoTrueClient {
+   protected autoRefreshTickTimeout: ReturnType<typeof setTimeout> | null = null
+   protected visibilityChangedCallback: (() => Promise<any>) | null = null
+   protected refreshingDeferred: Deferred<CallRefreshTokenResult> | null = null
++  protected notifyingRefreshResults = new Map<
++    string,
++    { result: CallRefreshTokenResult; count: number }
++  >()
+   /**
+    * Cache of the most recent refresh failure, keyed by the refresh token
+    * that failed. Serial callers passing the *same* token within
+@@ -4960,6 +4964,11 @@ export default class GoTrueClient {
+       throw new AuthSessionMissingError()
+     }
+ 
++    const notifyingRefresh = this.notifyingRefreshResults.get(refreshToken)
++    if (notifyingRefresh) {
++      return notifyingRefresh.result
++    }
++
+     // refreshing is already in progress
+     if (this.refreshingDeferred) {
+       return this.refreshingDeferred.promise
+@@ -4988,8 +4997,14 @@ export default class GoTrueClient {
+ 
+     this._debug(debugName, 'begin')
+ 
++    let committedRefreshResult: CallRefreshTokenResult | null = null
++
+     try {
+       this.refreshingDeferred = new Deferred<CallRefreshTokenResult>()
++      // The initiating caller executes this method directly rather than awaiting
++      // the shared promise. Mark the shared rejection handled internally while
++      // preserving the original promise for concurrent joiners.
++      void Promise.resolve(this.refreshingDeferred.promise).catch(() => {})
+ 
+       // Snapshot storage before the fetch. The commit guard discards the
+       // rotated tokens only when a non-null pre-fetch snapshot changed under
+@@ -5064,20 +5079,29 @@ export default class GoTrueClient {
+         return discarded
+       }
+ 
+-      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session)
+-
+       const result = { data: data.session, error: null }
++      committedRefreshResult = result
+ 
+       // Refresh succeeded — clear any cached failure so the next caller
+       // (including the auto-refresh ticker) attempts a real refresh again.
+       this.lastRefreshFailure = null
+ 
++      await this._notifyAllSubscribers('TOKEN_REFRESHED', data.session)
++
+       this.refreshingDeferred.resolve(result)
+ 
+       return result
+     } catch (error) {
+       this._debug(debugName, 'error', error)
+ 
++      // The token exchange and storage commit already succeeded. Notification
++      // failure remains visible to ordinary callers, but must not be classified
++      // as a refresh-token failure, remove the rotated session, or start cooldown.
++      if (committedRefreshResult !== null) {
++        this.refreshingDeferred?.reject(error)
++        throw error
++      }
++
+       if (isAuthError(error)) {
+         const result = { data: null, error }
+ 
+@@ -5118,6 +5142,20 @@ export default class GoTrueClient {
+       return
+     }
+ 
++    let notifyingRefreshToken: string | null = null
++    if (event === 'TOKEN_REFRESHED' && session) {
++      notifyingRefreshToken = session.refresh_token
++      const active = this.notifyingRefreshResults.get(notifyingRefreshToken)
++      if (active) {
++        active.count += 1
++      } else {
++        this.notifyingRefreshResults.set(notifyingRefreshToken, {
++          result: { data: session, error: null },
++          count: 1,
++        })
++      }
++    }
++
+     const debugName = `#_notifyAllSubscribers(${event})`
+     this._debug(debugName, 'begin', session, `broadcast = ${broadcast}`)
+ 
+@@ -5140,6 +5178,14 @@ export default class GoTrueClient {
+         throw errors[0]
+       }
+     } finally {
++      if (notifyingRefreshToken) {
++        const active = this.notifyingRefreshResults.get(notifyingRefreshToken)
++        if (active && active.count > 1) {
++          active.count -= 1
++        } else {
++          this.notifyingRefreshResults.delete(notifyingRefreshToken)
++        }
++      }
+       this._debug(debugName, 'end')
+     }
+   }

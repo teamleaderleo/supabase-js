@@ -1,0 +1,92 @@
+{
+  "early-shared-settlement": {
+    "defaultNested": {
+      "outerToken": "R2",
+      "nestedToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1
+    },
+    "queuedDefaultNested": {
+      "nestedToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1
+    },
+    "explicitOldNested": {
+      "outcome": "success",
+      "outerToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1
+    },
+    "throwingSubscriber": {
+      "outerToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1,
+      "visited": [
+        "throwing",
+        "healthy"
+      ],
+      "subscriberErrors": [
+        "application subscriber failed"
+      ]
+    },
+    "ssrWait": {
+      "beforeRelease": {
+        "outerSettled": false,
+        "callbackFinished": false
+      },
+      "afterRelease": {
+        "outerSettled": true,
+        "callbackFinished": true
+      }
+    },
+    "oldTokenJoiner": {
+      "settledBeforeSubscriberCompletion": true,
+      "serviceCalls": 1
+    }
+  },
+  "token-aware-committed-result": {
+    "defaultNested": {
+      "outerToken": "R2",
+      "nestedToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1
+    },
+    "queuedDefaultNested": {
+      "nestedToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1
+    },
+    "explicitOldNested": {
+      "outcome": "timeout",
+      "outerToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1
+    },
+    "throwingSubscriber": {
+      "outerToken": "R2",
+      "storedToken": "R2",
+      "serviceCalls": 1,
+      "visited": [
+        "throwing",
+        "healthy"
+      ],
+      "subscriberErrors": [
+        "application subscriber failed"
+      ]
+    },
+    "ssrWait": {
+      "beforeRelease": {
+        "outerSettled": false,
+        "callbackFinished": false
+      },
+      "afterRelease": {
+        "outerSettled": true,
+        "callbackFinished": true
+      }
+    },
+    "oldTokenJoiner": {
+      "settledBeforeSubscriberCompletion": false,
+      "serviceCalls": 1
+    }
+  }
+}
