@@ -134,10 +134,22 @@ jobs:
       - name: Link owned generation-5 Supabase package into exact SSR source
         run: |
           ssr_dir="$GITHUB_WORKSPACE/.fieldwork/vendor/supabase-ssr"
+          package_dir="$GITHUB_WORKSPACE/packages/core/supabase-js"
           rm -rf "$ssr_dir/node_modules/@supabase/supabase-js"
-          ln -s "$GITHUB_WORKSPACE/packages/core/supabase-js" \
-            "$ssr_dir/node_modules/@supabase/supabase-js"
-          test -f "$ssr_dir/node_modules/@supabase/supabase-js/dist/main/index.js"
+          ln -s "$package_dir" "$ssr_dir/node_modules/@supabase/supabase-js"
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const packageDir = path.resolve('packages/core/supabase-js')
+          const pkg = JSON.parse(
+            fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'),
+          )
+          for (const entry of [pkg.main, pkg.module, pkg.types]) {
+            if (typeof entry !== 'string' || !fs.existsSync(path.join(packageDir, entry))) {
+              throw new Error(`missing declared package entry: ${String(entry)}`)
+            }
+          }
+          NODE
           cp \
             .fieldwork/auth-refresh-settlement/ssr-generation-5.integration.spec.ts \
             "$ssr_dir/src/fieldwork-generation-5.integration.spec.ts"
