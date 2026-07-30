@@ -51,7 +51,7 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
       const { client, storage, storageKey } = await createClient(throwOnError)
       jest.spyOn(console, 'error').mockImplementation(() => {})
 
-      let responseCookieRefreshToken = originalSession.refresh_token
+      const responseCookieRefreshToken = originalSession.refresh_token
       let cookieWriteAttempts = 0
       client.onAuthStateChange(async (event, session) => {
         if (event !== 'TOKEN_REFRESHED' || !session) return
@@ -65,7 +65,10 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
         error: null,
       })
 
-      expect(cookieWriteAttempts).toBe(1)
+      expect(cookieWriteAttempts).toBe(Number(process.env.FIELDWORK_SSR_WRITE_ATTEMPTS))
+      expect((client as any)._refreshAccessToken).toHaveBeenCalledTimes(
+        Number(process.env.FIELDWORK_PUBLIC_REFRESH_REQUESTS)
+      )
       expect(responseCookieRefreshToken).toBe(originalSession.refresh_token)
       expect(
         ((await getItemAsync(storage, storageKey)) as Session | null)?.refresh_token
@@ -97,7 +100,7 @@ describe('Fieldwork SSR cookie persistence boundary', () => {
       }
     })
 
-    let responseCookieRefreshToken = originalSession.refresh_token
+    const responseCookieRefreshToken = originalSession.refresh_token
     client.onAuthStateChange(async (event, session) => {
       if (event !== 'TOKEN_REFRESHED' || !session) return
       await Promise.resolve()
