@@ -5,12 +5,14 @@ import { stringToBase64URL } from './utils'
 
 const storageKey = 'sb-project-ref-auth-token'
 
+// Keep the starting session valid so createServerClient initialization does not
+// perform its own proactive refresh before the explicit refreshSession() call.
 const originalSession = {
   token_type: 'bearer',
   access_token: 'access-r1',
   refresh_token: 'refresh-r1',
-  expires_at: Math.floor(Date.now() / 1000) - 60,
-  expires_in: 0,
+  expires_at: Math.floor(Date.now() / 1000) + 1800,
+  expires_in: 1800,
   user: { id: 'user-1', email: 'user@example.com' },
 }
 
