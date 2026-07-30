@@ -88,3 +88,63 @@ jobs:
 
       - name: Run unpatched SSR persistence baseline
         run: bash .fieldwork/auth-refresh-settlement/run-ssr-baseline.sh
+
+  public-ssr-generation-5:
+    name: public-ssr-generation-5
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out owned experiment branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check out exact public @supabase/ssr source
+        uses: actions/checkout@v4
+        with:
+          repository: supabase/ssr
+          ref: 69a6209482ddde7b1bd769f7c8ca9a604cb65960
+          path: .fieldwork/vendor/supabase-ssr
+          persist-credentials: false
+
+      - name: Set up repository Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Enable pinned package managers
+        run: corepack enable
+
+      - name: Install owned workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install exact SSR source dependencies
+        working-directory: .fieldwork/vendor/supabase-ssr
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply generation-5 Auth candidate
+        run: |
+          git apply --check .fieldwork/auth-refresh-settlement/patches/notification-result-map.patch
+          git apply .fieldwork/auth-refresh-settlement/patches/notification-result-map.patch
+          git diff --check
+
+      - name: Build owned Supabase packages
+        run: pnpm --filter '@supabase/supabase-js...' run build
+
+      - name: Link owned generation-5 Supabase package into exact SSR source
+        run: |
+          ssr_dir="$GITHUB_WORKSPACE/.fieldwork/vendor/supabase-ssr"
+          rm -rf "$ssr_dir/node_modules/@supabase/supabase-js"
+          ln -s "$GITHUB_WORKSPACE/packages/core/supabase-js" \
+            "$ssr_dir/node_modules/@supabase/supabase-js"
+          test -f "$ssr_dir/node_modules/@supabase/supabase-js/dist/main/index.js"
+          cp \
+            .fieldwork/auth-refresh-settlement/ssr-generation-5.integration.spec.ts \
+            "$ssr_dir/src/fieldwork-generation-5.integration.spec.ts"
+
+      - name: Run exact public SSR adapter controls
+        working-directory: .fieldwork/vendor/supabase-ssr
+        run: >-
+          pnpm exec vitest run
+          src/fieldwork-generation-5.integration.spec.ts
+          --reporter verbose
