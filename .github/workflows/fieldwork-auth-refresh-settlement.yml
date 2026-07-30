@@ -35,6 +35,7 @@ jobs:
           - token-aware-committed-result
           - notification-failure-separation
           - notification-result-map
+          - generation-aware-notification-result
 
     steps:
       - name: Check out experiment branch
@@ -52,7 +53,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check experiment runner
-        run: bash -n .fieldwork/auth-refresh-settlement/run.sh
+        run: |
+          bash -n .fieldwork/auth-refresh-settlement/run.sh
+          python3 -m py_compile \
+            .fieldwork/auth-refresh-settlement/generation-aware-notification-result.py
 
       - name: Verify executable model result
         run: |
